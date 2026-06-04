@@ -5,13 +5,24 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
 import { Car, Bike, Truck, Search, Plus, Eye, Thermometer, Battery, MapPin } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 
 interface Vehicle {
   id: string;
   plate_number: string;
+  vehicle_name: string;
+  vin: string | null;
   vehicle_type: string;
   last_temperature: number | null;
   last_voltage: number | null;
@@ -34,6 +45,13 @@ export default function VehiclesPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [newVehicleName, setNewVehicleName] = useState("");
+  const [newPlateNumber, setNewPlateNumber] = useState("");
+  const [newVin, setNewVin] = useState("");
+  const [newVehicleType, setNewVehicleType] = useState("car");
+  const [newDeviceId, setNewDeviceId] = useState("");
+  const [adding, setAdding] = useState(false);
   const supabase = createClient();
 
   useEffect(() => {
@@ -41,16 +59,74 @@ export default function VehiclesPage() {
   }, []);
 
   async function fetchVehicles() {
-    const { data } = await supabase.from("vehicles").select("*");
-    if (data && data.length > 0) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("vehicles")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (data) {
       setVehicles(data as Vehicle[]);
-    } else {
-      setVehicles([]);
     }
     setLoading(false);
   }
 
+  async function addVehicle() {
+    if (!newVehicleName) {
+      toast.error("Vehicle name is required");
+      return;
+    }
+    if (!newPlateNumber) {
+      toast.error("Plate number is required");
+      return;
+    }
+
+    setAdding(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("You must be logged in");
+      return;
+    }
+
+    // Get user's customer_id
+    const { data: userData } = await supabase
+      .from("users")
+      .select("customer_id")
+      .eq("id", user.id)
+      .single();
+
+    const customerId = userData?.customer_id;
+
+    const { error } = await supabase.from("vehicles").insert({
+      vehicle_name: newVehicleName,
+      plate_number: newPlateNumber,
+      vin: newVin || null,
+      vehicle_type: newVehicleType,
+      device_id: newDeviceId || null,
+      customer_id: customerId,
+      status: "pending",
+    });
+
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success("Vehicle added successfully");
+      setAddModalOpen(false);
+      setNewVehicleName("");
+      setNewPlateNumber("");
+      setNewVin("");
+      setNewVehicleType("car");
+      setNewDeviceId("");
+      fetchVehicles();
+    }
+    setAdding(false);
+  }
+
   const filteredVehicles = vehicles.filter(v =>
+    v.vehicle_name.toLowerCase().includes(search.toLowerCase()) ||
     v.plate_number.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -69,7 +145,7 @@ export default function VehiclesPage() {
           <h1 className="text-2xl font-bold text-white tracking-tight">Vehicles</h1>
           <p className="text-sm text-[#6B7280] mt-1">Manage your fleet</p>
         </div>
-        <Button className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black font-semibold">
+        <Button onClick={() => setAddModalOpen(true)} className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black font-semibold">
           <Plus className="w-4 h-4 mr-2" />
           Add Vehicle
         </Button>
@@ -78,7 +154,7 @@ export default function VehiclesPage() {
       <div className="relative mb-6">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[#6B7280]" />
         <Input
-          placeholder="Search by plate number..."
+          placeholder="Search by vehicle name or plate number..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-10 bg-[#0A0A0A] border-[#1A1A1A] text-white placeholder:text-[#6B7280]"
@@ -95,7 +171,8 @@ export default function VehiclesPage() {
                     {getVehicleIcon(vehicle.vehicle_type)}
                   </div>
                   <div>
-                    <h3 className="font-bold text-white">{vehicle.plate_number}</h3>
+                    <h3 className="font-bold text-white">{vehicle.vehicle_name}</h3>
+                    <p className="text-xs text-[#6B7280]">{vehicle.plate_number}</p>
                     <div className="flex items-center mt-1">
                       <span className={`inline-block w-2 h-2 rounded-full ${vehicle.status === "online" ? "bg-[#22C55E]" : "bg-[#EF4444]"} mr-2 animate-pulse`}></span>
                       <span className="text-xs text-[#6B7280] capitalize">{vehicle.status || "offline"}</span>
@@ -162,8 +239,79 @@ export default function VehiclesPage() {
         <div className="text-center py-12">
           <Car className="w-12 h-12 text-[#1A1A1A] mx-auto mb-4" />
           <p className="text-[#6B7280]">No vehicles found</p>
+          <Button onClick={() => setAddModalOpen(true)} variant="outline" className="mt-4">
+            Add your first vehicle
+          </Button>
         </div>
       )}
+
+      {/* Add Vehicle Modal */}
+      <Dialog open={addModalOpen} onOpenChange={setAddModalOpen}>
+        <DialogContent className="bg-[#0A0A0A] border-[#1A1A1A] text-white">
+          <DialogHeader>
+            <DialogTitle>Add New Vehicle</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-gray-300">Vehicle Name *</Label>
+              <Input
+                placeholder="e.g., My Toyota Camry, Delivery Bike 1"
+                value={newVehicleName}
+                onChange={(e) => setNewVehicleName(e.target.value)}
+                className="mt-1.5 bg-[#1A1A1A] border-[#2A2A2A] text-white"
+              />
+            </div>
+            <div>
+              <Label className="text-gray-300">Plate Number *</Label>
+              <Input
+                placeholder="LAGOS-123-ABC"
+                value={newPlateNumber}
+                onChange={(e) => setNewPlateNumber(e.target.value)}
+                className="mt-1.5 bg-[#1A1A1A] border-[#2A2A2A] text-white"
+              />
+            </div>
+            <div>
+              <Label className="text-gray-300">VIN <span className="text-gray-500">(optional)</span></Label>
+              <Input
+                placeholder="17-character VIN"
+                value={newVin}
+                onChange={(e) => setNewVin(e.target.value)}
+                className="mt-1.5 bg-[#1A1A1A] border-[#2A2A2A] text-white"
+              />
+            </div>
+            <div>
+              <Label className="text-gray-300">Vehicle Type</Label>
+              <select
+                value={newVehicleType}
+                onChange={(e) => setNewVehicleType(e.target.value)}
+                className="w-full mt-1.5 px-3 py-2 bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg text-white"
+              >
+                <option value="car">Car</option>
+                <option value="bike">Bike</option>
+                <option value="truck">Truck</option>
+              </select>
+            </div>
+            <div>
+              <Label className="text-gray-300">Device ID <span className="text-gray-500">(optional)</span></Label>
+              <Input
+                placeholder="ESP32_XXXXX"
+                value={newDeviceId}
+                onChange={(e) => setNewDeviceId(e.target.value)}
+                className="mt-1.5 bg-[#1A1A1A] border-[#2A2A2A] text-white"
+              />
+              <p className="text-xs text-gray-500 mt-1">Required for auto-telemetry. You can add later.</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddModalOpen(false)} className="border-[#2A2A2A] text-gray-400">
+              Cancel
+            </Button>
+            <Button onClick={addVehicle} disabled={adding} className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black">
+              {adding ? "Adding..." : "Add Vehicle"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
