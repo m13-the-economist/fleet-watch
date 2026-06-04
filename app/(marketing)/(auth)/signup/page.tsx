@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertCircle, Shield } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { toast } from "sonner";
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -22,13 +23,54 @@ export default function SignUpPage() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const supabase = createClient();
 
-  // Check if user just confirmed email
+  // Function to create user record
+  async function createUserRecord(userId: string, email: string, name: string, companyName: string) {
+    // First check if customer exists, if not create one
+    let customerId = '4f9a7f9c-bd2f-4465-9b23-4725ef1b38f4'; // Default customer
+    
+    const { data: existingCustomer } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('email', email)
+      .single();
+    
+    if (!existingCustomer) {
+      const { data: newCustomer } = await supabase
+        .from('customers')
+        .insert({ name: companyName || name, email: email })
+        .select()
+        .single();
+      
+      if (newCustomer) {
+        customerId = newCustomer.id;
+      }
+    } else {
+      customerId = existingCustomer.id;
+    }
+    
+    // Create user record
+    await supabase
+      .from('users')
+      .insert({
+        id: userId,
+        customer_id: customerId,
+        email: email,
+        name: name,
+        company_name: companyName,
+        password_hash: 'managed_by_supabase',
+        role: 'user'
+      });
+  }
+
+  // Check for session after email confirmation
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const userId = session.user.id;
         const userEmail = session.user.email;
+        const userName = session.user.user_metadata?.name || name;
+        const userCompany = session.user.user_metadata?.company_name || companyName;
         
         // Check if user record already exists
         const { data: existingUser } = await supabase
@@ -37,24 +79,24 @@ export default function SignUpPage() {
           .eq("id", userId)
           .single();
         
-        if (!existingUser && name) {
-          // Create user record (no customer needed for individual users)
-          await supabase
-            .from("users")
-            .insert({
-              id: userId,
-              email: userEmail,
-              name: name,
-              company_name: companyName || null,
-              password_hash: "managed_by_supabase",
-              role: "user",
-            });
+        if (!existingUser && userId) {
+          await createUserRecord(userId, userEmail!, userName, userCompany);
+          toast.success("Account created successfully!");
         }
         router.push("/dashboard");
       }
     };
     
     checkSession();
+    
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        checkSession();
+      }
+    });
+    
+    return () => subscription.unsubscribe();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,13 +135,6 @@ export default function SignUpPage() {
       if (signUpError) throw signUpError;
 
       if (authData.user) {
-        // Store signup info in localStorage for after confirmation
-        localStorage.setItem("pendingSignup", JSON.stringify({
-          userId: authData.user.id,
-          email,
-          name,
-          companyName
-        }));
         setShowConfirmation(true);
       }
     } catch (err: any) {
@@ -124,7 +159,7 @@ export default function SignUpPage() {
               We sent a confirmation link to <strong className="text-[#D4AF37]">{email}</strong>
             </p>
             <p className="text-sm text-gray-500 mt-4">
-              Click the link in the email to verify your account.
+              Click the link in the email to verify your account, then you'll be automatically logged in.
             </p>
           </CardHeader>
           <CardContent>
