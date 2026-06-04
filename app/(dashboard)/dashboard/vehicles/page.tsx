@@ -14,15 +14,15 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
-import { Car, Bike, Truck, Search, Plus, Eye, Thermometer, Battery, MapPin } from "lucide-react";
+import { Car, Bike, Truck, Search, Plus, Eye, Thermometer, Battery, MapPin, Copy } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
 interface Vehicle {
   id: string;
-  plate_number: string;
-  vehicle_name: string;
-  vin: string | null;
+  plate_number: string | null;
+  vehicle_name: string | null;
+  device_id: string | null;
   vehicle_type: string;
   last_temperature: number | null;
   last_voltage: number | null;
@@ -48,9 +48,8 @@ export default function VehiclesPage() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [newVehicleName, setNewVehicleName] = useState("");
   const [newPlateNumber, setNewPlateNumber] = useState("");
-  const [newVin, setNewVin] = useState("");
-  const [newVehicleType, setNewVehicleType] = useState("car");
   const [newDeviceId, setNewDeviceId] = useState("");
+  const [newVehicleType, setNewVehicleType] = useState("car");
   const [adding, setAdding] = useState(false);
   const supabase = createClient();
 
@@ -59,18 +58,28 @@ export default function VehiclesPage() {
   }, []);
 
   async function fetchVehicles() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/signin');
+        return;
+      }
 
-    const { data } = await supabase
-      .from("vehicles")
-      .select("*")
-      .order("created_at", { ascending: false });
+      const { data, error } = await supabase
+        .from("vehicles")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-    if (data) {
-      setVehicles(data as Vehicle[]);
+      if (error) throw error;
+      if (data) {
+        setVehicles(data as Vehicle[]);
+      }
+    } catch (error) {
+      console.error("Error fetching vehicles:", error);
+      toast.error("Failed to load vehicles");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   async function addVehicle() {
@@ -82,53 +91,80 @@ export default function VehiclesPage() {
       toast.error("Plate number is required");
       return;
     }
-
-    setAdding(true);
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error("You must be logged in");
+    if (!newDeviceId) {
+      toast.error("Device ID is required - find it on the sticker on your device");
       return;
     }
 
-    // Get user's customer_id
-    const { data: userData } = await supabase
-      .from("users")
-      .select("customer_id")
-      .eq("id", user.id)
-      .single();
+    setAdding(true);
 
-    const customerId = userData?.customer_id;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/signin');
+        return;
+      }
 
-    const { error } = await supabase.from("vehicles").insert({
-      vehicle_name: newVehicleName,
-      plate_number: newPlateNumber,
-      vin: newVin || null,
-      vehicle_type: newVehicleType,
-      device_id: newDeviceId || null,
-      customer_id: customerId,
-      status: "pending",
-    });
+      const { data: userData } = await supabase
+        .from("users")
+        .select("customer_id")
+        .eq("id", session.user.id)
+        .single();
 
-    if (error) {
-      toast.error(error.message);
-    } else {
-      toast.success("Vehicle added successfully");
+      const customerId = userData?.customer_id;
+
+      // Register the device
+      const { error: deviceError } = await supabase
+        .from("devices")
+        .insert({
+          device_id: newDeviceId,
+          plate_number: newPlateNumber,
+          vehicle_type: newVehicleType,
+          customer_id: customerId,
+          is_active: true,
+        });
+
+      if (deviceError && deviceError.code !== '23505') {
+        throw deviceError;
+      }
+
+      // Add the vehicle
+      const { error } = await supabase.from("vehicles").insert({
+        vehicle_name: newVehicleName,
+        plate_number: newPlateNumber,
+        device_id: newDeviceId,
+        vehicle_type: newVehicleType,
+        customer_id: customerId,
+        status: "pending",
+      });
+
+      if (error) throw error;
+
+      toast.success("Vehicle added successfully!");
       setAddModalOpen(false);
       setNewVehicleName("");
       setNewPlateNumber("");
-      setNewVin("");
-      setNewVehicleType("car");
       setNewDeviceId("");
+      setNewVehicleType("car");
       fetchVehicles();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to add vehicle");
+    } finally {
+      setAdding(false);
     }
-    setAdding(false);
   }
 
-  const filteredVehicles = vehicles.filter(v =>
-    v.vehicle_name.toLowerCase().includes(search.toLowerCase()) ||
-    v.plate_number.toLowerCase().includes(search.toLowerCase())
-  );
+  function copyDeviceId(deviceId: string) {
+    navigator.clipboard.writeText(deviceId);
+    toast.success("Device ID copied");
+  }
+
+  const filteredVehicles = vehicles.filter(v => {
+    const name = v.vehicle_name?.toLowerCase() || "";
+    const plate = v.plate_number?.toLowerCase() || "";
+    const searchTerm = search.toLowerCase();
+    return name.includes(searchTerm) || plate.includes(searchTerm);
+  });
 
   if (loading) {
     return (
@@ -171,8 +207,16 @@ export default function VehiclesPage() {
                     {getVehicleIcon(vehicle.vehicle_type)}
                   </div>
                   <div>
-                    <h3 className="font-bold text-white">{vehicle.vehicle_name}</h3>
-                    <p className="text-xs text-[#6B7280]">{vehicle.plate_number}</p>
+                    <h3 className="font-bold text-white">{vehicle.vehicle_name || "Unnamed"}</h3>
+                    <p className="text-xs text-[#6B7280]">{vehicle.plate_number || "No plate"}</p>
+                    {vehicle.device_id && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <p className="text-[9px] text-[#D4AF37] font-mono">{vehicle.device_id}</p>
+                        <button onClick={() => copyDeviceId(vehicle.device_id!)} className="text-gray-500 hover:text-[#D4AF37]">
+                          <Copy className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
                     <div className="flex items-center mt-1">
                       <span className={`inline-block w-2 h-2 rounded-full ${vehicle.status === "online" ? "bg-[#22C55E]" : "bg-[#EF4444]"} mr-2 animate-pulse`}></span>
                       <span className="text-xs text-[#6B7280] capitalize">{vehicle.status || "offline"}</span>
@@ -250,6 +294,9 @@ export default function VehiclesPage() {
         <DialogContent className="bg-[#0A0A0A] border-[#1A1A1A] text-white">
           <DialogHeader>
             <DialogTitle>Add New Vehicle</DialogTitle>
+            <p className="text-sm text-gray-400 mt-1">
+              Enter the Device ID printed on the sticker of your ESP32 device.
+            </p>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -271,13 +318,16 @@ export default function VehiclesPage() {
               />
             </div>
             <div>
-              <Label className="text-gray-300">VIN <span className="text-gray-500">(optional)</span></Label>
+              <Label className="text-gray-300">Device ID *</Label>
               <Input
-                placeholder="17-character VIN"
-                value={newVin}
-                onChange={(e) => setNewVin(e.target.value)}
+                placeholder="ESP32_XXXXX (from sticker on device)"
+                value={newDeviceId}
+                onChange={(e) => setNewDeviceId(e.target.value)}
                 className="mt-1.5 bg-[#1A1A1A] border-[#2A2A2A] text-white"
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Find this on the sticker attached to your Fleet Watch device.
+              </p>
             </div>
             <div>
               <Label className="text-gray-300">Vehicle Type</Label>
@@ -290,16 +340,6 @@ export default function VehiclesPage() {
                 <option value="bike">Bike</option>
                 <option value="truck">Truck</option>
               </select>
-            </div>
-            <div>
-              <Label className="text-gray-300">Device ID <span className="text-gray-500">(optional)</span></Label>
-              <Input
-                placeholder="ESP32_XXXXX"
-                value={newDeviceId}
-                onChange={(e) => setNewDeviceId(e.target.value)}
-                className="mt-1.5 bg-[#1A1A1A] border-[#2A2A2A] text-white"
-              />
-              <p className="text-xs text-gray-500 mt-1">Required for auto-telemetry. You can add later.</p>
             </div>
           </div>
           <DialogFooter>

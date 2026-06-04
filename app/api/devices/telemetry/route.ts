@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { device_id, plate_number, vehicle_type, temperature, voltage, rpm, speed, fault_code, location } = body
+    const { device_id, temperature, voltage, rpm, speed, fault_code, location } = body
 
     if (!device_id) {
       return NextResponse.json({ error: 'device_id is required' }, { status: 400 })
@@ -12,16 +12,15 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
-    // STEP 1: Validate device is registered
+    // Find device and its customer
     const { data: device, error: deviceError } = await supabase
       .from('devices')
-      .select('id, customer_id, is_active, plate_number')
+      .select('id, customer_id, plate_number, is_active')
       .eq('device_id', device_id)
       .single()
 
     if (deviceError || !device) {
-      console.error('Device not found:', device_id)
-      return NextResponse.json({ error: 'Device not registered. Please register first.' }, { status: 401 })
+      return NextResponse.json({ error: 'Device not registered' }, { status: 401 })
     }
 
     if (!device.is_active) {
@@ -29,16 +28,11 @@ export async function POST(request: Request) {
     }
 
     const customerId = device.customer_id
-    const finalPlateNumber = plate_number || device.plate_number
 
-    if (!finalPlateNumber) {
-      return NextResponse.json({ error: 'plate_number is required for new devices' }, { status: 400 })
-    }
-
-    // STEP 2: Find or create vehicle record
+    // Find or create vehicle
     let { data: vehicle } = await supabase
       .from('vehicles')
-      .select('id')
+      .select('id, vehicle_name, plate_number')
       .eq('device_id', device_id)
       .single()
 
@@ -47,17 +41,12 @@ export async function POST(request: Request) {
         .from('vehicles')
         .insert({
           device_id,
-          plate_number: finalPlateNumber,
-          vehicle_type: vehicle_type || 'car',
+          plate_number: device.plate_number,
+          vehicle_name: device.plate_number,
           customer_id: customerId,
-          last_temperature: temperature,
-          last_voltage: voltage,
-          last_rpm: rpm,
-          last_speed: speed,
-          last_seen: new Date().toISOString(),
           status: 'online'
         })
-        .select('id')
+        .select()
         .single()
 
       if (createError) throw createError
@@ -76,88 +65,103 @@ export async function POST(request: Request) {
         .eq('id', vehicle.id)
     }
 
-    // STEP 3: Update device last_seen
-    await supabase
-      .from('devices')
-      .update({ last_seen: new Date().toISOString() })
-      .eq('device_id', device_id)
-
-    // STEP 4: Save reading
-    await supabase
-      .from('readings')
-      .insert({
-        vehicle_id: vehicle.id,
-        temperature,
-        voltage,
-        rpm,
-        speed,
-        fault_code,
-        location_lat: location?.lat,
-        location_lng: location?.lng,
-        created_at: new Date().toISOString()
-      })
-
-    // STEP 5: Check for alerts
-    const alerts = []
-    
-    // Temperature alerts
-    if (temperature > 105) {
-      alerts.push({ type: 'overheat', severity: 'critical', message: `Engine overheating: ${temperature}°C` })
-    } else if (temperature > 95) {
-      alerts.push({ type: 'overheat', severity: 'warning', message: `High engine temperature: ${temperature}°C` })
-    }
-
-    // Voltage alerts
-    if (voltage < 11.8) {
-      alerts.push({ type: 'low_battery', severity: 'critical', message: `Battery critically low: ${voltage}V` })
-    } else if (voltage < 12.2) {
-      alerts.push({ type: 'low_battery', severity: 'warning', message: `Low battery: ${voltage}V` })
-    }
-
-    // Speed alerts
-    if (speed) {
-      if (speed > 100) {
-        alerts.push({ type: 'speeding', severity: 'critical', message: `Excessive speeding: ${speed} km/h` })
-      } else if (speed > 80) {
-        alerts.push({ type: 'speeding', severity: 'warning', message: `Speed limit exceeded: ${speed} km/h` })
-      }
-    }
-
-    // Fault code alerts
-    if (fault_code) {
-      alerts.push({ type: 'check_engine', severity: 'critical', message: `Check engine code: ${fault_code}` })
-    }
-
-    // STEP 6: Save alerts and send notifications
-    for (const alert of alerts) {
-      const { data: newAlert } = await supabase
-        .from('alerts')
+    // Save reading - vehicle is guaranteed to exist here
+    if (vehicle && vehicle.id) {
+      await supabase
+        .from('readings')
         .insert({
           vehicle_id: vehicle.id,
-          alert_type: alert.type,
-          severity: alert.severity,
-          message: alert.message,
-          is_resolved: false
+          temperature,
+          voltage,
+          rpm,
+          speed,
+          fault_code,
+          location_lat: location?.lat,
+          location_lng: location?.lng,
+          created_at: new Date().toISOString()
         })
-        .select()
-        .single()
+    }
 
-      // Send Telegram notification
-      if (newAlert && customerId) {
-        const { data: telegramSubs } = await supabase
-          .from('telegram_subscriptions')
-          .select('chat_id')
-          .eq('customer_id', customerId)
+    // Check for alerts
+    const alerts = []
+    
+    if (temperature > 95) {
+      const severity = temperature > 105 ? 'critical' : 'warning'
+      alerts.push({
+        type: 'overheat',
+        severity,
+        message: `Engine ${severity === 'critical' ? 'CRITICAL' : 'warning'}: ${temperature}°C`
+      })
+    }
 
-        if (telegramSubs && telegramSubs.length > 0) {
-          const botToken = process.env.TELEGRAM_BOT_TOKEN
-          if (botToken) {
+    if (voltage < 12.2) {
+      const severity = voltage < 11.8 ? 'critical' : 'warning'
+      alerts.push({
+        type: 'low_battery',
+        severity,
+        message: `Battery ${severity === 'critical' ? 'CRITICAL' : 'low'}: ${voltage}V`
+      })
+    }
+
+    if (speed && speed > 80) {
+      const severity = speed > 100 ? 'critical' : 'warning'
+      alerts.push({
+        type: 'speeding',
+        severity,
+        message: `Speeding ${severity === 'critical' ? 'CRITICAL' : 'warning'}: ${speed} km/h`
+      })
+    }
+
+    if (fault_code) {
+      alerts.push({
+        type: 'check_engine',
+        severity: 'critical',
+        message: `Check Engine: Code ${fault_code}`
+      })
+    }
+
+    // Save alerts and send notifications
+    const botToken = process.env.TELEGRAM_BOT_TOKEN
+    
+    for (const alert of alerts) {
+      if (vehicle && vehicle.id) {
+        const { data: savedAlert } = await supabase
+          .from('alerts')
+          .insert({
+            vehicle_id: vehicle.id,
+            alert_type: alert.type,
+            severity: alert.severity,
+            message: alert.message,
+            is_resolved: false
+          })
+          .select()
+          .single()
+
+        // Send Telegram notification
+        if (savedAlert && botToken) {
+          const { data: telegramSubs } = await supabase
+            .from('telegram_subscriptions')
+            .select('chat_id')
+            .eq('customer_id', customerId)
+
+          if (telegramSubs && telegramSubs.length > 0) {
+            const alertEmoji = alert.severity === 'critical' ? '🚨🔴' : '⚠️🟡'
+            const text = `${alertEmoji} *FLEETWATCH ALERT* ${alertEmoji}\n\n` +
+              `*Vehicle:* ${vehicle.vehicle_name}\n` +
+              `*Plate:* ${vehicle.plate_number}\n` +
+              `*Alert:* ${alert.message}\n` +
+              `*Time:* ${new Date().toLocaleString()}\n\n` +
+              `📱 *Dashboard:* ${process.env.NEXT_PUBLIC_APP_URL || 'https://fleet-watch-theta.vercel.app'}/dashboard`
+
             for (const sub of telegramSubs) {
-              const message = `🚨 *FLEETWATCH ALERT* 🚨\n\nVehicle: ${finalPlateNumber}\n${alert.message}\nTime: ${new Date().toLocaleString()}`
               await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: sub.chat_id, text: message, parse_mode: 'Markdown' })
+                body: JSON.stringify({
+                  chat_id: sub.chat_id,
+                  text,
+                  parse_mode: 'Markdown'
+                })
               }).catch(console.error)
             }
           }
@@ -165,7 +169,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, alerts, device_verified: true })
+    return NextResponse.json({ success: true, alerts_count: alerts.length })
   } catch (error) {
     console.error('Telemetry error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
