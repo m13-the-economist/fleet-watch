@@ -27,9 +27,8 @@ export default function MapComponent({ vehicles, isMobile = false }: MapComponen
   const [isFullscreen, setIsFullscreen] = useState(false);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<{ [key: string]: any }>({});
-  const initializedRef = useRef(false);
 
-  const mapHeight = isFullscreen ? "100vh" : (isMobile ? "350px" : "500px");
+  const mapHeight = isFullscreen ? "100vh" : (isMobile ? "300px" : "500px");
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -48,12 +47,6 @@ export default function MapComponent({ vehicles, isMobile = false }: MapComponen
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
-      // Force map resize when fullscreen changes
-      setTimeout(() => {
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.invalidateSize();
-        }
-      }, 200);
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
@@ -72,9 +65,9 @@ export default function MapComponent({ vehicles, isMobile = false }: MapComponen
 
   // Initialize map once
   useEffect(() => {
-    if (!isMounted || !mapRef.current || initializedRef.current) return;
+    if (!isMounted || !mapRef.current || mapInstanceRef.current) return;
 
-    const timer = setTimeout(async () => {
+    const initMap = async () => {
       const L = await import("leaflet");
       await import("leaflet/dist/leaflet.css");
 
@@ -85,6 +78,9 @@ export default function MapComponent({ vehicles, isMobile = false }: MapComponen
         shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
       });
 
+      // Fix: Check if mapRef.current exists before creating map
+      if (!mapRef.current) return;
+      
       const map = L.map(mapRef.current).setView([6.5244, 3.3792], 13);
       
       L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
@@ -95,39 +91,43 @@ export default function MapComponent({ vehicles, isMobile = false }: MapComponen
       }).addTo(map);
 
       mapInstanceRef.current = map;
-      initializedRef.current = true;
       
       setTimeout(() => {
         if (mapInstanceRef.current) {
           mapInstanceRef.current.invalidateSize();
         }
       }, 100);
-    }, 500);
+    };
 
-    return () => clearTimeout(timer);
+    initMap();
   }, [isMounted]);
 
-  // Update markers when vehicles change
   useEffect(() => {
-    if (!isMounted || !mapInstanceRef.current || !initializedRef.current) return;
+    setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 200);
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    if (!isMounted || !mapInstanceRef.current) return;
 
     const updateMarkers = async () => {
       const L = await import("leaflet");
       
-      // Clear all existing markers
       Object.values(markersRef.current).forEach((marker) => {
         if (marker && marker.remove) marker.remove();
       });
       markersRef.current = {};
 
-      // Add markers for current vehicles
       vehicles.forEach((vehicle) => {
-        if (vehicle.last_location_lat && vehicle.last_location_lng) {
+        if (vehicle.last_location_lat && vehicle.last_location_lng && mapInstanceRef.current) {
           let markerColor = "#D4AF37";
           if (vehicle.status === "offline") markerColor = "#6B7280";
           if (vehicle.last_temperature > 95) markerColor = "#EF4444";
-          
-          const markerSize = isFullscreen ? 16 : (isMobile ? 10 : 14);
+
+          const markerSize = isFullscreen ? 14 : (isMobile ? 8 : 12);
           
           const customIcon = L.divIcon({
             className: "custom-marker",
@@ -137,8 +137,7 @@ export default function MapComponent({ vehicles, isMobile = false }: MapComponen
               height: ${markerSize}px;
               border-radius: 50%;
               border: 2px solid ${markerColor === "#D4AF37" ? "#F5D76E" : "white"};
-              box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-              cursor: pointer;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.4);
             "></div>`,
             iconSize: [markerSize, markerSize],
             iconAnchor: [markerSize / 2, markerSize / 2],
@@ -146,14 +145,13 @@ export default function MapComponent({ vehicles, isMobile = false }: MapComponen
 
           const marker = L.marker([vehicle.last_location_lat, vehicle.last_location_lng], {
             icon: customIcon,
-            zIndexOffset: 1000,
           }).addTo(mapInstanceRef.current);
 
           const popupContent = isFullscreen
             ? `<div style="background: #0A0A0A; color: white; padding: 12px; border-radius: 12px; min-width: 200px; font-size: 14px; border-top: 3px solid #D4AF37;">
                 <strong style="color: #D4AF37; font-size: 16px;">✨ ${vehicle.plate_number}</strong><br/>
-                🌡️ Temp: ${vehicle.last_temperature || "--"}°C<br/>
-                ⚡ Voltage: ${vehicle.last_voltage || "--"}V<br/>
+                📍 Temp: ${vehicle.last_temperature || "--"}°C<br/>
+                🔋 Voltage: ${vehicle.last_voltage || "--"}V<br/>
                 📡 Status: ${vehicle.status || "unknown"}
               </div>`
             : isMobile
@@ -166,7 +164,7 @@ export default function MapComponent({ vehicles, isMobile = false }: MapComponen
                 <strong style="color: #D4AF37;">✨ ${vehicle.plate_number}</strong><br/>
                 🌡️ Temp: ${vehicle.last_temperature || "--"}°C<br/>
                 ⚡ Voltage: ${vehicle.last_voltage || "--"}V<br/>
-                �� Status: ${vehicle.status || "unknown"}
+                📡 Status: ${vehicle.status || "unknown"}
               </div>`;
 
           marker.bindPopup(popupContent);
@@ -174,13 +172,12 @@ export default function MapComponent({ vehicles, isMobile = false }: MapComponen
         }
       });
 
-      // Fit bounds to show all markers
       const validVehicles = vehicles.filter(v => v.last_location_lat && v.last_location_lng);
       if (validVehicles.length > 0 && mapInstanceRef.current) {
         const bounds = (L as any).latLngBounds(
           validVehicles.map((v) => [v.last_location_lat, v.last_location_lng])
         );
-        mapInstanceRef.current.fitBounds(bounds, { padding: [50, 50] });
+        mapInstanceRef.current.fitBounds(bounds, { padding: [30, 30] });
       }
     };
 
@@ -198,28 +195,26 @@ export default function MapComponent({ vehicles, isMobile = false }: MapComponen
   return (
     <div 
       ref={containerRef} 
-      className={`relative rounded-xl overflow-hidden ${isFullscreen ? "fixed inset-0 z-[9999] rounded-none" : ""}`}
+      className={`relative rounded-xl overflow-hidden ${isFullscreen ? "fixed inset-0 z-[9999] rounded-none" : "z-10"}`}
       style={{ height: mapHeight, width: "100%" }}
     >
       <div ref={mapRef} style={{ height: "100%", width: "100%", backgroundColor: "#1A1A1A" }} />
-      
-      {/* Fullscreen Button - Always visible */}
       <Button
         onClick={toggleFullscreen}
+        variant="outline"
         size={isMobile ? "sm" : "default"}
-        className={`absolute bottom-4 right-4 z-[10000] bg-black/90 backdrop-blur-md border border-[#D4AF37] text-[#D4AF37] hover:bg-black hover:border-[#D4AF37]/70 shadow-lg ${
-          isFullscreen ? "fixed" : ""
+        className={`absolute bottom-3 right-3 z-[10000] bg-black/80 backdrop-blur-sm border-[#D4AF37]/30 text-[#D4AF37] hover:bg-black/90 hover:border-[#D4AF37]/50 ${
+          isFullscreen ? "fixed bottom-5 right-5" : ""
         }`}
-        style={{ fontWeight: "bold" }}
       >
         {isFullscreen ? (
           <>
-            <Minimize2 className="w-4 h-4 mr-2" />
-            Exit Fullscreen
+            <Minimize2 className="w-4 h-4 mr-1" />
+            Exit
           </>
         ) : (
           <>
-            <Maximize2 className="w-4 h-4 mr-2" />
+            <Maximize2 className="w-4 h-4 mr-1" />
             Fullscreen
           </>
         )}
