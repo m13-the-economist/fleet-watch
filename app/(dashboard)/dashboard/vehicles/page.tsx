@@ -8,16 +8,16 @@ import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { Car, Bike, Truck, Search, Plus, Eye, Thermometer, Battery, MapPin } from "lucide-react";
 import Link from "next/link";
- 
+
 interface Vehicle {
   id: string;
   plate_number: string;
   vehicle_type: string;
-  last_temperature: number;
-  last_voltage: number;
-  last_speed: number;
+  last_temperature: number | null;
+  last_voltage: number | null;
+  last_speed: number | null;
   status: string;
-  last_seen: string;
+  last_seen: string | null;
 }
 
 const getVehicleIcon = (type: string) => {
@@ -42,8 +42,10 @@ export default function VehiclesPage() {
 
   async function fetchVehicles() {
     const { data } = await supabase.from("vehicles").select("*");
-    if (data) {
+    if (data && data.length > 0) {
       setVehicles(data as Vehicle[]);
+    } else {
+      setVehicles([]);
     }
     setLoading(false);
   }
@@ -111,8 +113,8 @@ export default function VehiclesPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-[#6B7280]">Temperature</span>
                   <span className={`font-semibold ${
-                    vehicle.last_temperature > 95 ? "text-[#EF4444]" :
-                    vehicle.last_temperature > 85 ? "text-[#FACC15]" : "text-[#22C55E]"
+                    (vehicle.last_temperature || 0) > 95 ? "text-[#EF4444]" :
+                    (vehicle.last_temperature || 0) > 85 ? "text-[#FACC15]" : "text-[#22C55E]"
                   }`}>
                     {vehicle.last_temperature ? `${vehicle.last_temperature}°C` : "--"}
                   </span>
@@ -120,8 +122,8 @@ export default function VehiclesPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-[#6B7280]">Voltage</span>
                   <span className={`font-semibold ${
-                    vehicle.last_voltage < 11.8 ? "text-[#EF4444]" :
-                    vehicle.last_voltage < 12.2 ? "text-[#FACC15]" : "text-[#22C55E]"
+                    (vehicle.last_voltage || 0) < 11.8 ? "text-[#EF4444]" :
+                    (vehicle.last_voltage || 0) < 12.2 ? "text-[#FACC15]" : "text-[#22C55E]"
                   }`}>
                     {vehicle.last_voltage ? `${vehicle.last_voltage}V` : "--"}
                   </span>

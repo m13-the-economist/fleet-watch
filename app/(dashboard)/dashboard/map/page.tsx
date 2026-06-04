@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +42,7 @@ const getVehicleIcon = (type: string) => {
   }
 };
 
-export default function MapPage() {
+function MapContent() {
   const searchParams = useSearchParams();
   const vehicleId = searchParams.get("vehicle");
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -213,5 +214,17 @@ export default function MapPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function MapPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-64">
+        <div className="text-white">Loading map...</div>
+      </div>
+    }>
+      <MapContent />
+    </Suspense>
   );
 }
