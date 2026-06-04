@@ -8,24 +8,24 @@ import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
 import { Car, Bike, Truck, Search, Plus, Eye, Thermometer, Battery, MapPin } from "lucide-react";
 import Link from "next/link";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
-
+ 
 interface Vehicle {
   id: string;
   plate_number: string;
   vehicle_type: string;
   last_temperature: number;
   last_voltage: number;
+  last_speed: number;
   status: string;
   last_seen: string;
 }
 
 const getVehicleIcon = (type: string) => {
   switch (type) {
-    case "car": return <Car className="w-4 h-4" />;
-    case "bike": return <Bike className="w-4 h-4" />;
-    case "truck": return <Truck className="w-4 h-4" />;
-    default: return <Car className="w-4 h-4" />;
+    case "car": return <Car className="w-5 h-5" />;
+    case "bike": return <Bike className="w-5 h-5" />;
+    case "truck": return <Truck className="w-5 h-5" />;
+    default: return <Car className="w-5 h-5" />;
   }
 };
 
@@ -35,20 +35,15 @@ export default function VehiclesPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
-  const isMobile = !useMediaQuery("(min-width: 768px)");
 
   useEffect(() => {
     fetchVehicles();
   }, []);
 
   async function fetchVehicles() {
-    const { data } = await supabase
-      .from("vehicles")
-      .select("*")
-      .order("created_at", { ascending: false });
-
+    const { data } = await supabase.from("vehicles").select("*");
     if (data) {
-      setVehicles(data);
+      setVehicles(data as Vehicle[]);
     }
     setLoading(false);
   }
@@ -65,113 +60,6 @@ export default function VehiclesPage() {
     );
   }
 
-  // MOBILE VIEW - Compact
-  if (isMobile) {
-    return (
-      <div>
-        <div className="flex justify-between items-center mb-4">
-          <div>
-            <h1 className="text-lg font-bold text-white">Vehicles</h1>
-            <p className="text-[10px] text-[#6B7280]">Manage your fleet</p>
-          </div>
-          <Button size="sm" className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black h-8">
-            <Plus className="w-3 h-3 mr-1" />
-            Add
-          </Button>
-        </div>
-
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-3 h-3 text-[#6B7280]" />
-          <Input
-            placeholder="Search plate..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 py-1.5 text-sm bg-[#0A0A0A] border-[#1A1A1A] text-white placeholder:text-[#6B7280] h-9"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 gap-3">
-          {filteredVehicles.map((vehicle) => (
-            <Card key={vehicle.id} className="bg-[#0A0A0A] border-[#1A1A1A] rounded-xl overflow-hidden">
-              <div className="p-3">
-                <div className="flex justify-between items-start mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-[#1A1A1A] flex items-center justify-center">
-                      {getVehicleIcon(vehicle.vehicle_type)}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-white text-sm">{vehicle.plate_number}</h3>
-                      <div className="flex items-center mt-0.5">
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full ${vehicle.status === "online" ? "bg-[#22C55E]" : "bg-[#EF4444]"} mr-1 animate-pulse`}></span>
-                        <span className="text-[9px] text-[#6B7280] capitalize">{vehicle.status || "offline"}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <Link href={`/dashboard/vehicles/${vehicle.id}`}>
-                    <Button variant="ghost" size="icon" className="h-7 w-7">
-                      <Eye className="w-3 h-3" />
-                    </Button>
-                  </Link>
-                </div>
-
-                <div className="flex justify-between items-center mb-2 text-[11px]">
-                  <span className="text-[#6B7280]">Temp</span>
-                  <span className={`font-semibold ${
-                    vehicle.last_temperature > 95 ? "text-[#EF4444]" :
-                    vehicle.last_temperature > 85 ? "text-[#FACC15]" : "text-[#22C55E]"
-                  }`}>
-                    {vehicle.last_temperature ? `${vehicle.last_temperature}°` : "--"}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center mb-2 text-[11px]">
-                  <span className="text-[#6B7280]">Voltage</span>
-                  <span className={`font-semibold ${
-                    vehicle.last_voltage < 11.8 ? "text-[#EF4444]" :
-                    vehicle.last_voltage < 12.2 ? "text-[#FACC15]" : "text-[#22C55E]"
-                  }`}>
-                    {vehicle.last_voltage ? `${vehicle.last_voltage}V` : "--"}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center mb-3 text-[10px]">
-                  <span className="text-[#6B7280]">Last Seen</span>
-                  <span className="text-white">
-                    {vehicle.last_seen ? new Date(vehicle.last_seen).toLocaleTimeString() : "--"}
-                  </span>
-                </div>
-
-                <div className="flex gap-2 pt-2 border-t border-[#1A1A1A]">
-                  <Link href={`/dashboard/vehicles/${vehicle.id}`} className="flex-1">
-                    <Button variant="outline" size="sm" className="w-full border-[#1A1A1A] text-[#6B7280] hover:text-white h-7 text-[10px]">
-                      <Thermometer className="w-3 h-3 mr-1" />
-                      History
-                    </Button>
-                  </Link>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="flex-1 border-[#1A1A1A] text-[#6B7280] hover:text-white h-7 text-[10px]"
-                    onClick={() => router.push(`/dashboard/map?vehicle=${vehicle.id}`)}
-                  >
-                    <MapPin className="w-3 h-3 mr-1" />
-                    Locate
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-
-        {filteredVehicles.length === 0 && (
-          <div className="text-center py-8">
-            <Car className="w-8 h-8 text-[#1A1A1A] mx-auto mb-2" />
-            <p className="text-[#6B7280] text-sm">No vehicles found</p>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  // DESKTOP VIEW - Original untouched
   return (
     <div>
       <div className="flex justify-between items-center mb-8">
