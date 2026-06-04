@@ -1,14 +1,73 @@
 import { NextResponse } from 'next/server'
-import { Telegraf } from 'telegraf'
-import { createClient } from '@/lib/supabase/server'
-
-// Initialize bot
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!)
 
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    await bot.handleUpdate(body)
+    const { message } = body
+    const chatId = message?.chat?.id.toString()
+    const text = message?.text || ''
+
+    if (!chatId) return NextResponse.json({ success: true })
+
+    // Handle commands
+    if (text === '/start') {
+      await sendTelegramMessage(chatId, 
+        `🔧 *FleetWatch Bot Active* 🔧\n\n` +
+        `Your Chat ID is: \`${chatId}\`\n\n` +
+        `📋 *How to get alerts:*\n` +
+        `1. Copy this Chat ID\n` +
+        `2. Go to Fleet Watch Settings page\n` +
+        `3. Paste it in Telegram Alerts section\n` +
+        `4. Click Add\n\n` +
+        `You will now receive alerts for your vehicles.\n\n` +
+        `Commands:\n` +
+        `/status - Check your fleet status\n` +
+        `/alerts - View active alerts\n` +
+        `/help - Show this message`,
+        { parse_mode: 'Markdown' }
+      )
+    }
+    else if (text === '/status') {
+      await sendTelegramMessage(chatId,
+        `🚗 *Fleet Status*\n\n` +
+        `To see your fleet status, log into your dashboard:\n` +
+        `https://fleet-watch-theta.vercel.app/dashboard\n\n` +
+        `Make sure you've added your Chat ID in Settings first.`,
+        { parse_mode: 'Markdown' }
+      )
+    }
+    else if (text === '/alerts') {
+      await sendTelegramMessage(chatId,
+        `🚨 *Active Alerts*\n\n` +
+        `To see your active alerts, log into your dashboard:\n` +
+        `https://fleet-watch-theta.vercel.app/dashboard/alerts`,
+        { parse_mode: 'Markdown' }
+      )
+    }
+    else if (text === '/help') {
+      await sendTelegramMessage(chatId,
+        `🤖 *FleetWatch Bot Commands*\n\n` +
+        `/start - Get your Chat ID and register\n` +
+        `/status - Check fleet status\n` +
+        `/alerts - View active alerts\n` +
+        `/help - Show this message\n\n` +
+        `📱 *Need to set up alerts?*\n` +
+        `1. Copy your Chat ID above\n` +
+        `2. Go to Settings page in Fleet Watch\n` +
+        `3. Paste and save`,
+        { parse_mode: 'Markdown' }
+      )
+    }
+    else {
+      // If user sends any message without command, reply with their Chat ID
+      await sendTelegramMessage(chatId,
+        `🔑 *Your Chat ID:* \`${chatId}\`\n\n` +
+        `Copy this ID and add it to your Fleet Watch Settings page to receive alerts.\n\n` +
+        `Send /help for available commands.`,
+        { parse_mode: 'Markdown' }
+      )
+    }
+
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Webhook error:', error)
@@ -16,113 +75,17 @@ export async function POST(request: Request) {
   }
 }
 
-// Bot commands
-bot.start(async (ctx) => {
-  const chatId = ctx.chat.id.toString()
-  const userId = ctx.from.id.toString()
-  
-  const supabase = await createClient()
-  
-  // Check if user is authenticated (you'll need to link Telegram to user account)
-  // For now, just register the chat ID
-  const { error } = await supabase
-    .from('telegram_subscriptions')
-    .insert({ chat_id: chatId })
-  
-  if (error) {
-    ctx.reply('❌ Error registering. Please contact support.')
-  } else {
-    ctx.reply(`
-✅ *Welcome to FleetWatch Alerts!*
+async function sendTelegramMessage(chatId: string, text: string, options?: any) {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN
+  if (!botToken) return
 
-You will now receive real-time alerts for your fleet.
-
-📌 *Available Commands:*
-/status - Check fleet status
-/alerts - View active alerts
-/help - Show this message
-
-_Note: Link your account by logging into the web dashboard and adding this chat ID._
-    `, { parse_mode: 'Markdown' })
-  }
-})
-
-bot.command('status', async (ctx) => {
-  const chatId = ctx.chat.id.toString()
-  const supabase = await createClient()
-  
-  // Get vehicles for this Telegram chat (you'll need to link chat_id to customer_id)
-  const { data: vehicles } = await supabase
-    .from('vehicles')
-    .select('plate_number, last_temperature, last_voltage, status, last_seen')
-    .limit(10)
-  
-  if (!vehicles || vehicles.length === 0) {
-    ctx.reply('📭 No vehicles found in your fleet.')
-    return
-  }
-  
-  let message = '🚗 *Fleet Status*\n\n'
-  for (const v of vehicles) {
-    const tempEmoji = v.last_temperature > 95 ? '🔥' : v.last_temperature > 85 ? '⚠️' : '✅'
-    const voltageEmoji = v.last_voltage < 11.8 ? '🔋⚠️' : v.last_voltage < 12.2 ? '⚡⚠️' : '✅'
-    message += `*${v.plate_number}*\n`
-    message += `  ${tempEmoji} Temp: ${v.last_temperature || '--'}°C\n`
-    message += `  ${voltageEmoji} Voltage: ${v.last_voltage || '--'}V\n`
-    message += `  📡 Status: ${v.status || 'unknown'}\n\n`
-  }
-  
-  ctx.reply(message, { parse_mode: 'Markdown' })
-})
-
-bot.command('alerts', async (ctx) => {
-  const supabase = await createClient()
-  
-  const { data: alerts } = await supabase
-    .from('alerts')
-    .select('*, vehicles(plate_number)')
-    .eq('is_resolved', false)
-    .order('created_at', { ascending: false })
-    .limit(10)
-  
-  if (!alerts || alerts.length === 0) {
-    ctx.reply('✅ No active alerts. All vehicles are operating normally.')
-    return
-  }
-  
-  let message = '🚨 *Active Alerts*\n\n'
-  for (const a of alerts) {
-    const severityEmoji = a.severity === 'critical' ? '🔴' : '🟡'
-    message += `${severityEmoji} *${a.vehicles?.plate_number || 'Unknown'}*\n`
-    message += `   ${a.message}\n`
-    message += `   📅 ${new Date(a.created_at).toLocaleString()}\n\n`
-  }
-  
-  ctx.reply(message, { parse_mode: 'Markdown' })
-})
-
-bot.command('help', async (ctx) => {
-  ctx.reply(`
-🤖 *FleetWatch Bot Commands*
-
-/start - Register for alerts
-/status - Check fleet status
-/alerts - View active alerts
-/help - Show this message
-
-📱 *Web Dashboard*
-Login at: https://fleetwatch.vercel.app
-
-💡 *Need to link your account?*
-1. Go to Web Dashboard → Settings
-2. Copy your Chat ID: \`${ctx.chat.id}\`
-3. Add it to receive alerts
-  `, { parse_mode: 'Markdown' })
-})
-
-// Set webhook endpoint (run once)
-export async function GET() {
-  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://your-domain.vercel.app'}/api/telegram/webhook`
-  await bot.telegram.setWebhook(webhookUrl)
-  return NextResponse.json({ message: 'Webhook set', url: webhookUrl })
+  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: options?.parse_mode || 'Markdown',
+    })
+  })
 }
