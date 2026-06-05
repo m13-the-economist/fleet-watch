@@ -12,9 +12,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
-import { Car, Bike, Truck, Search, Plus, Eye, Thermometer, Battery, MapPin, Copy } from "lucide-react";
+import { Car, Bike, Truck, Search, Plus, Eye, Thermometer, Battery, MapPin, Copy, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -46,6 +47,9 @@ export default function VehiclesPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [addModalOpen, setAddModalOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [vehicleToDelete, setVehicleToDelete] = useState<Vehicle | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [newVehicleName, setNewVehicleName] = useState("");
   const [newPlateNumber, setNewPlateNumber] = useState("");
   const [newDeviceId, setNewDeviceId] = useState("");
@@ -106,7 +110,6 @@ export default function VehiclesPage() {
         return;
       }
 
-      // Get customer_id from users table
       const { data: userData, error: userError } = await supabase
         .from("users")
         .select("customer_id")
@@ -125,8 +128,6 @@ export default function VehiclesPage() {
         toast.error("Account not properly configured. Please contact support.");
         return;
       }
-
-      console.log("Adding vehicle with customer_id:", customerId);
 
       // Register the device
       const { error: deviceError } = await supabase
@@ -178,9 +179,68 @@ export default function VehiclesPage() {
     }
   }
 
+  async function deleteVehicle() {
+    if (!vehicleToDelete) return;
+    
+    setDeleting(true);
+    
+    try {
+      // Delete readings first
+      await supabase
+        .from("readings")
+        .delete()
+        .eq("vehicle_id", vehicleToDelete.id);
+      
+      // Delete alerts
+      await supabase
+        .from("alerts")
+        .delete()
+        .eq("vehicle_id", vehicleToDelete.id);
+      
+      // Delete the vehicle
+      const { error: vehicleError } = await supabase
+        .from("vehicles")
+        .delete()
+        .eq("id", vehicleToDelete.id);
+      
+      if (vehicleError) throw vehicleError;
+      
+      // Optionally delete the device if no other vehicles use it
+      if (vehicleToDelete.device_id) {
+        const { data: otherVehicles } = await supabase
+          .from("vehicles")
+          .select("id")
+          .eq("device_id", vehicleToDelete.device_id)
+          .neq("id", vehicleToDelete.id);
+        
+        if (!otherVehicles || otherVehicles.length === 0) {
+          await supabase
+            .from("devices")
+            .delete()
+            .eq("device_id", vehicleToDelete.device_id);
+        }
+      }
+      
+      toast.success("Vehicle deleted successfully");
+      setDeleteModalOpen(false);
+      setVehicleToDelete(null);
+      fetchVehicles();
+    } catch (error: any) {
+      console.error("Delete error:", error);
+      toast.error(error.message || "Failed to delete vehicle");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   function copyDeviceId(deviceId: string) {
     navigator.clipboard.writeText(deviceId);
     toast.success("Device ID copied");
+  }
+
+  function openDeleteModal(vehicle: Vehicle) {
+    setVehicleToDelete(vehicle);
+    setDeleteModalOpen(true);
   }
 
   const filteredVehicles = vehicles.filter(v => {
@@ -247,11 +307,21 @@ export default function VehiclesPage() {
                     </div>
                   </div>
                 </div>
-                <Link href={`/dashboard/vehicles/${vehicle.id}`}>
-                  <Button variant="ghost" size="icon" className="text-[#6B7280] hover:text-white">
-                    <Eye className="w-4 h-4" />
+                <div className="flex gap-1">
+                  <Link href={`/dashboard/vehicles/${vehicle.id}`}>
+                    <Button variant="ghost" size="icon" className="text-[#6B7280] hover:text-white">
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                  </Link>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="text-red-500 hover:text-red-400 hover:bg-red-500/10"
+                    onClick={() => openDeleteModal(vehicle)}
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </Button>
-                </Link>
+                </div>
               </div>
 
               <div className="space-y-3 mb-4">
@@ -372,6 +442,37 @@ export default function VehiclesPage() {
             </Button>
             <Button onClick={addVehicle} disabled={adding} className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black">
               {adding ? "Adding..." : "Add Vehicle"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+        <DialogContent className="bg-[#0A0A0A] border-[#1A1A1A] text-white">
+          <DialogHeader>
+            <DialogTitle>Delete Vehicle</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Are you sure you want to delete <span className="text-white font-semibold">{vehicleToDelete?.vehicle_name || vehicleToDelete?.plate_number}</span>?
+              <br />
+              <br />
+              This action cannot be undone. All readings and alerts for this vehicle will be permanently deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteModalOpen(false)}
+              className="border-[#2A2A2A] text-gray-400"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={deleteVehicle}
+              disabled={deleting}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleting ? "Deleting..." : "Delete Vehicle"}
             </Button>
           </DialogFooter>
         </DialogContent>

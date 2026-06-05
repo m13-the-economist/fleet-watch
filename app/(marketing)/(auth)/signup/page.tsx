@@ -23,10 +23,10 @@ export default function SignUpPage() {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const supabase = createClient();
 
-  // Function to create user record
-  async function createUserRecord(userId: string, email: string, name: string, companyName: string) {
-    // First check if customer exists, if not create one
-    let customerId = '4f9a7f9c-bd2f-4465-9b23-4725ef1b38f4'; // Default customer
+  // Function to create user record after email confirmation
+  const createUserRecord = async (userId: string, email: string, name: string, companyName: string) => {
+    // Get or create customer
+    let customerId = '4f9a7f9c-bd2f-4465-9b23-4725ef1b38f4';
     
     const { data: existingCustomer } = await supabase
       .from('customers')
@@ -48,8 +48,8 @@ export default function SignUpPage() {
       customerId = existingCustomer.id;
     }
     
-    // Create user record
-    await supabase
+    // Create user record with the EXACT auth ID
+    const { error: userError } = await supabase
       .from('users')
       .insert({
         id: userId,
@@ -60,7 +60,11 @@ export default function SignUpPage() {
         password_hash: 'managed_by_supabase',
         role: 'user'
       });
-  }
+    
+    if (userError) {
+      console.error("User creation error:", userError);
+    }
+  };
 
   // Check for session after email confirmation
   useEffect(() => {
@@ -159,7 +163,7 @@ export default function SignUpPage() {
               We sent a confirmation link to <strong className="text-[#D4AF37]">{email}</strong>
             </p>
             <p className="text-sm text-gray-500 mt-4">
-              Click the link in the email to verify your account, then you'll be automatically logged in.
+              Click the link to verify your account, then you'll be automatically logged in.
             </p>
           </CardHeader>
           <CardContent>
