@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertCircle, Shield } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { toast } from "sonner";
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -22,86 +21,6 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const supabase = createClient();
-
-  // Function to create user record after email confirmation
-  const createUserRecord = async (userId: string, email: string, name: string, companyName: string) => {
-    // Get or create customer
-    let customerId = '4f9a7f9c-bd2f-4465-9b23-4725ef1b38f4';
-    
-    const { data: existingCustomer } = await supabase
-      .from('customers')
-      .select('id')
-      .eq('email', email)
-      .single();
-    
-    if (!existingCustomer) {
-      const { data: newCustomer } = await supabase
-        .from('customers')
-        .insert({ name: companyName || name, email: email })
-        .select()
-        .single();
-      
-      if (newCustomer) {
-        customerId = newCustomer.id;
-      }
-    } else {
-      customerId = existingCustomer.id;
-    }
-    
-    // Create user record with the EXACT auth ID
-    const { error: userError } = await supabase
-      .from('users')
-      .insert({
-        id: userId,
-        customer_id: customerId,
-        email: email,
-        name: name,
-        company_name: companyName,
-        password_hash: 'managed_by_supabase',
-        role: 'user'
-      });
-    
-    if (userError) {
-      console.error("User creation error:", userError);
-    }
-  };
-
-  // Check for session after email confirmation
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        const userId = session.user.id;
-        const userEmail = session.user.email;
-        const userName = session.user.user_metadata?.name || name;
-        const userCompany = session.user.user_metadata?.company_name || companyName;
-        
-        // Check if user record already exists
-        const { data: existingUser } = await supabase
-          .from("users")
-          .select("id")
-          .eq("id", userId)
-          .single();
-        
-        if (!existingUser && userId) {
-          await createUserRecord(userId, userEmail!, userName, userCompany);
-          toast.success("Account created successfully!");
-        }
-        router.push("/dashboard");
-      }
-    };
-    
-    checkSession();
-    
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        checkSession();
-      }
-    });
-    
-    return () => subscription.unsubscribe();
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,7 +49,7 @@ export default function SignUpPage() {
         password,
         options: {
           data: {
-            name: name,
+            full_name: name,        // Changed from 'name' to 'full_name'
             company_name: companyName,
           },
         },
