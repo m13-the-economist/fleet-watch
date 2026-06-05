@@ -92,7 +92,7 @@ export default function VehiclesPage() {
       return;
     }
     if (!newDeviceId) {
-      toast.error("Device ID is required - find it on the sticker on your device");
+      toast.error("Device ID is required");
       return;
     }
 
@@ -101,17 +101,32 @@ export default function VehiclesPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
+        toast.error("Please sign in again");
         router.push('/signin');
         return;
       }
 
-      const { data: userData } = await supabase
+      // Get customer_id from users table
+      const { data: userData, error: userError } = await supabase
         .from("users")
         .select("customer_id")
         .eq("id", session.user.id)
         .single();
 
+      if (userError) {
+        console.error("User fetch error:", userError);
+        toast.error("Could not find your account. Please contact support.");
+        return;
+      }
+
       const customerId = userData?.customer_id;
+      
+      if (!customerId) {
+        toast.error("Account not properly configured. Please contact support.");
+        return;
+      }
+
+      console.log("Adding vehicle with customer_id:", customerId);
 
       // Register the device
       const { error: deviceError } = await supabase
@@ -125,20 +140,28 @@ export default function VehiclesPage() {
         });
 
       if (deviceError && deviceError.code !== '23505') {
-        throw deviceError;
+        console.error("Device insert error:", deviceError);
+        toast.error("Failed to register device: " + deviceError.message);
+        return;
       }
 
       // Add the vehicle
-      const { error } = await supabase.from("vehicles").insert({
-        vehicle_name: newVehicleName,
-        plate_number: newPlateNumber,
-        device_id: newDeviceId,
-        vehicle_type: newVehicleType,
-        customer_id: customerId,
-        status: "pending",
-      });
+      const { error: vehicleError } = await supabase
+        .from("vehicles")
+        .insert({
+          vehicle_name: newVehicleName,
+          plate_number: newPlateNumber,
+          device_id: newDeviceId,
+          vehicle_type: newVehicleType,
+          customer_id: customerId,
+          status: "pending",
+        });
 
-      if (error) throw error;
+      if (vehicleError) {
+        console.error("Vehicle insert error:", vehicleError);
+        toast.error("Failed to add vehicle: " + vehicleError.message);
+        return;
+      }
 
       toast.success("Vehicle added successfully!");
       setAddModalOpen(false);
@@ -148,6 +171,7 @@ export default function VehiclesPage() {
       setNewVehicleType("car");
       fetchVehicles();
     } catch (error: any) {
+      console.error("Add vehicle error:", error);
       toast.error(error.message || "Failed to add vehicle");
     } finally {
       setAdding(false);
