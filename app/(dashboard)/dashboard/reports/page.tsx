@@ -53,7 +53,17 @@ export default function ReportsPage() {
   }, []);
 
   async function fetchData() {
-    const { data: vehiclesData } = await supabase.from("vehicles").select("*");
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      router.push('/signin');
+      return;
+    }
+
+    const { data: vehiclesData } = await supabase
+      .from("vehicles")
+      .select("*")
+      .eq("profile_id", session.user.id);
+
     const { data: alertsData } = await supabase
       .from("alerts")
       .select("*")
@@ -340,7 +350,7 @@ export default function ReportsPage() {
     );
   }
 
-  // DESKTOP VIEW - Original untouched
+  // DESKTOP VIEW
   return (
     <div>
       <div className="flex justify-between items-center mb-8">

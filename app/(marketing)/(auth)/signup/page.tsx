@@ -48,10 +48,10 @@ export default function SignUpPage() {
         email,
         password,
         options: {
-          data: {
-            full_name: name,        // Changed from 'name' to 'full_name'
-            company_name: companyName,
-          },
+            data: {
+                name: name,  // ✅ Supabase uses 'name' not 'full_name'
+                company_name: companyName,
+              }
         },
       });
 

@@ -31,7 +31,7 @@ import {
 interface UserProfile {
   id: string;
   email: string;
-  name: string;
+  full_name: string;
   company_name: string | null;
 }
 
@@ -71,23 +71,44 @@ export default function SettingsPage() {
   async function fetchUserData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
+      // Query profiles table instead of users
       const { data: userData } = await supabase
-        .from("users")
+        .from("profiles")
         .select("*")
         .eq("id", user.id)
         .single();
+      
       if (userData) {
-        setProfile(userData);
-        setEditName(userData.name || "");
+        setProfile({
+          ...userData,
+          email: user.email || "",
+          full_name: userData.full_name || "",
+        });
+        setEditName(userData.full_name || "");
         setEditCompany(userData.company_name || "");
+      } else {
+        // If no profile exists yet, create one
+        const { error: insertError } = await supabase
+          .from("profiles")
+          .insert({ id: user.id, full_name: "", company_name: null });
+        
+        if (!insertError) {
+          fetchUserData(); // Retry
+        }
       }
     }
     setLoading(false);
   }
 
   async function fetchTelegramSubscriptions() {
-    const { data } = await supabase.from("telegram_subscriptions").select("*");
-    if (data) setTelegramSubscriptions(data);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data } = await supabase
+        .from("telegram_subscriptions")
+        .select("*")
+        .eq("profile_id", user.id);
+      if (data) setTelegramSubscriptions(data);
+    }
   }
 
   async function saveName() {
@@ -99,13 +120,13 @@ export default function SettingsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { error } = await supabase
-        .from("users")
-        .update({ name: editName })
+        .from("profiles")
+        .update({ full_name: editName })
         .eq("id", user.id);
       if (error) toast.error("Failed to update name");
       else {
         toast.success("Name updated");
-        setProfile({ ...profile!, name: editName });
+        setProfile({ ...profile!, full_name: editName });
         setNameModalOpen(false);
       }
     }
@@ -117,7 +138,7 @@ export default function SettingsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { error } = await supabase
-        .from("users")
+        .from("profiles")
         .update({ company_name: editCompany || null })
         .eq("id", user.id);
       if (error) toast.error("Failed to update company");
@@ -144,7 +165,6 @@ export default function SettingsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     
     if (user) {
-      // Send password reset email
       const { error } = await supabase.auth.resetPasswordForEmail(user.email!, {
         redirectTo: `${window.location.origin}/update-password`,
       });
@@ -163,9 +183,12 @@ export default function SettingsPage() {
 
   async function addTelegramSubscription() {
     if (!telegramChatId) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    
     const { error } = await supabase
       .from("telegram_subscriptions")
-      .insert({ chat_id: telegramChatId });
+      .insert({ chat_id: telegramChatId, profile_id: user.id });
     if (error) toast.error(error.message);
     else {
       toast.success("Telegram chat ID added");
@@ -191,7 +214,10 @@ export default function SettingsPage() {
     if (!confirmed) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      await supabase.from("users").delete().eq("id", user.id);
+      // Delete from profiles first
+      await supabase.from("profiles").delete().eq("id", user.id);
+      // Delete auth user
+      await supabase.auth.admin.deleteUser(user.id);
       toast.success("Account deleted");
       router.push("/signup");
     }
@@ -229,7 +255,7 @@ export default function SettingsPage() {
                 <Pencil className="w-3 h-3" />
               </button>
             </div>
-            <p className="text-sm text-white">{profile?.name || "Not set"}</p>
+            <p className="text-sm text-white">{profile?.full_name || "Not set"}</p>
           </div>
 
           {/* Email Field */}
@@ -431,7 +457,7 @@ export default function SettingsPage() {
                 Edit
               </button>
             </div>
-            <p className="text-white mt-1">{profile?.name || "Not set"}</p>
+            <p className="text-white mt-1">{profile?.full_name || "Not set"}</p>
           </div>
 
           <div>
@@ -563,7 +589,7 @@ export default function SettingsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPasswordModalOpen(false)} className="border-[#2A2A2A] text-gray-400">Cancel</Button>
-            <Button onClick={sendPasswordResetEmail} disabled={sendingEmail} className="bg-[#D4AF37] hover:bg-[#E5C86B} text-black">Send Reset Email</Button>
+            <Button onClick={sendPasswordResetEmail} disabled={sendingEmail} className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black">Send Reset Email</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

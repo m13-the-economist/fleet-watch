@@ -80,32 +80,43 @@ export default function DashboardHomePage() {
   }, []);
 
   async function fetchData() {
-    const { data: vehiclesData } = await supabase
-      .from("vehicles")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/signin');
+        return;
+      }
 
-    if (vehiclesData) {
-      setVehicles(vehiclesData);
+      const { data: vehiclesData } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("profile_id", session.user.id)
+        .order("created_at", { ascending: false });
+
+      if (vehiclesData) {
+        setVehicles(vehiclesData);
+      }
+
+      const { data: alertsData } = await supabase
+        .from("alerts")
+        .select(`
+          *,
+          vehicles (
+            plate_number
+          )
+        `)
+        .eq("is_resolved", false)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (alertsData) {
+        setAlerts(alertsData);
+      }
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      setLoading(false);
     }
-
-    const { data: alertsData } = await supabase
-      .from("alerts")
-      .select(`
-        *,
-        vehicles (
-          plate_number
-        )
-      `)
-      .eq("is_resolved", false)
-      .order("created_at", { ascending: false })
-      .limit(5);
-
-    if (alertsData) {
-      setAlerts(alertsData);
-    }
-
-    setLoading(false);
   }
 
   const onlineCount = vehicles.filter(v => v.status === "online").length;
@@ -121,11 +132,10 @@ export default function DashboardHomePage() {
     );
   }
 
-  // MOBILE VIEW - Slightly larger
+  // MOBILE VIEW
   if (isMobile) {
     return (
       <div>
-        {/* KPI Cards */}
         <div className="grid grid-cols-2 gap-3 mb-5">
           <Card 
             className="bg-[#0A0A0A] border-[#1A1A1A] rounded-xl p-4 cursor-pointer"
@@ -184,7 +194,6 @@ export default function DashboardHomePage() {
           </Card>
         </div>
 
-        {/* Fleet Vehicles Table */}
         <div className="bg-[#0A0A0A] rounded-xl border border-[#1A1A1A] overflow-hidden mb-5">
           <div className="px-4 py-3 border-b border-[#1A1A1A]">
             <div className="flex justify-between items-center">
@@ -260,7 +269,6 @@ export default function DashboardHomePage() {
           </div>
         </div>
 
-        {/* Alerts Panel */}
         <div className="bg-[#0A0A0A] rounded-xl border border-[#1A1A1A] p-4">
           <div className="flex justify-between items-center mb-3">
             <h3 className="text-sm font-bold text-white">Real-Time Alerts</h3>

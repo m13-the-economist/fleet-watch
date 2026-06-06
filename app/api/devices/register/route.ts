@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { device_id, plate_number, vehicle_type, customer_id } = body
+    const { device_id, plate_number, vehicle_type, profile_id } = body
 
     if (!device_id || !plate_number) {
       return NextResponse.json({ error: 'device_id and plate_number are required' }, { status: 400 })
@@ -28,27 +28,25 @@ export async function POST(request: Request) {
       .from('devices')
       .insert({
         device_id,
-        plate_number,
         vehicle_type: vehicle_type || 'car',
-        customer_id: customer_id || null,
         is_active: true,
-        last_seen: new Date().toISOString()
+        last_telemetry_at: new Date().toISOString()
       })
       .select()
       .single()
 
     if (error) throw error
 
-    // Also create vehicle record
+    // Also create vehicle record with profile_id
     await supabase
       .from('vehicles')
       .insert({
         device_id,
         plate_number,
         vehicle_type: vehicle_type || 'car',
-        customer_id: customer_id || null,
-        status: 'pending',
-        created_at: new Date().toISOString()
+        profile_id: profile_id || null,
+        status: 'offline',
+        vehicle_name: plate_number
       })
 
     return NextResponse.json({ success: true, device })

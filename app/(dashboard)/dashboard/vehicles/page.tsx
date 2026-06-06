@@ -72,6 +72,7 @@ export default function VehiclesPage() {
       const { data, error } = await supabase
         .from("vehicles")
         .select("*")
+        .eq("profile_id", session.user.id)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -110,43 +111,7 @@ export default function VehiclesPage() {
         return;
       }
 
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("customer_id")
-        .eq("id", session.user.id)
-        .single();
-
-      if (userError) {
-        console.error("User fetch error:", userError);
-        toast.error("Could not find your account. Please contact support.");
-        return;
-      }
-
-      const customerId = userData?.customer_id;
-      
-      if (!customerId) {
-        toast.error("Account not properly configured. Please contact support.");
-        return;
-      }
-
-      // Register the device
-      const { error: deviceError } = await supabase
-        .from("devices")
-        .insert({
-          device_id: newDeviceId,
-          plate_number: newPlateNumber,
-          vehicle_type: newVehicleType,
-          customer_id: customerId,
-          is_active: true,
-        });
-
-      if (deviceError && deviceError.code !== '23505') {
-        console.error("Device insert error:", deviceError);
-        toast.error("Failed to register device: " + deviceError.message);
-        return;
-      }
-
-      // Add the vehicle
+      // Add the vehicle directly with profile_id
       const { error: vehicleError } = await supabase
         .from("vehicles")
         .insert({
@@ -154,8 +119,8 @@ export default function VehiclesPage() {
           plate_number: newPlateNumber,
           device_id: newDeviceId,
           vehicle_type: newVehicleType,
-          customer_id: customerId,
-          status: "pending",
+          profile_id: session.user.id,
+          status: "offline",
         });
 
       if (vehicleError) {
@@ -204,22 +169,6 @@ export default function VehiclesPage() {
         .eq("id", vehicleToDelete.id);
       
       if (vehicleError) throw vehicleError;
-      
-      // Optionally delete the device if no other vehicles use it
-      if (vehicleToDelete.device_id) {
-        const { data: otherVehicles } = await supabase
-          .from("vehicles")
-          .select("id")
-          .eq("device_id", vehicleToDelete.device_id)
-          .neq("id", vehicleToDelete.id);
-        
-        if (!otherVehicles || otherVehicles.length === 0) {
-          await supabase
-            .from("devices")
-            .delete()
-            .eq("device_id", vehicleToDelete.device_id);
-        }
-      }
       
       toast.success("Vehicle deleted successfully");
       setDeleteModalOpen(false);
