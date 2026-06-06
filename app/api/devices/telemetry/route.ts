@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     }
 
     // Update vehicle with latest telemetry
-    await supabase
+    const { error: updateError } = await supabase
       .from('vehicles')
       .update({
         last_temperature: temperature,
@@ -36,7 +36,11 @@ export async function POST(request: Request) {
       })
       .eq('id', vehicle.id)
 
-    // Save reading with error handling
+    if (updateError) {
+      console.error('Vehicle update error:', updateError)
+    }
+
+    // Save reading with error handling - will return error if fails
     const { error: readingError } = await supabase
       .from('readings')
       .insert({
@@ -50,7 +54,10 @@ export async function POST(request: Request) {
 
     if (readingError) {
       console.error('Reading insert error:', readingError)
-      // Don't return error - continue with alerts
+      return NextResponse.json({ 
+        error: 'Reading insert failed', 
+        details: readingError 
+      }, { status: 500 })
     }
 
     // Check for alerts
