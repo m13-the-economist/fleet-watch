@@ -36,17 +36,22 @@ export async function POST(request: Request) {
       })
       .eq('id', vehicle.id)
 
-    // Save reading
-    await supabase
+    // Save reading with error handling
+    const { error: readingError } = await supabase
       .from('readings')
       .insert({
         vehicle_id: vehicle.id,
-        device_id,
-        temperature,
-        voltage,
-        rpm,
-        speed
+        device_id: device_id,
+        temperature: temperature || null,
+        voltage: voltage || null,
+        rpm: rpm || null,
+        speed: speed || null
       })
+
+    if (readingError) {
+      console.error('Reading insert error:', readingError)
+      // Don't return error - continue with alerts
+    }
 
     // Check for alerts
     const alerts = []
