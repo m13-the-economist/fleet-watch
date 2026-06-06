@@ -12,12 +12,12 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
-    // Find vehicle by device_id
+    // Find vehicle by device_id - using maybeSingle() instead of single()
     let { data: vehicle, error: vehicleError } = await supabase
       .from('vehicles')
       .select('id, plate_number, profile_id')
       .eq('device_id', device_id)
-      .single()
+      .maybeSingle()
 
     if (vehicleError || !vehicle) {
       return NextResponse.json({ error: 'Vehicle not found for this device' }, { status: 404 })
