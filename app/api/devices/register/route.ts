@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
@@ -10,14 +10,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'device_id and plate_number are required' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Check if device already exists
     const { data: existingDevice } = await supabase
       .from('devices')
       .select('id')
       .eq('device_id', device_id)
-      .single()
+      .maybeSingle()
 
     if (existingDevice) {
       return NextResponse.json({ error: 'Device already registered', device_id }, { status: 409 })
