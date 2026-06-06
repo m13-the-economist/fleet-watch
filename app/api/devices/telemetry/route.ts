@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
 
 export async function POST(request: Request) {
@@ -10,9 +10,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'device_id is required' }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
-    // Find vehicle by device_id - using maybeSingle() instead of single()
+    // Find vehicle by device_id
     let { data: vehicle, error: vehicleError } = await supabase
       .from('vehicles')
       .select('id, plate_number, profile_id')
