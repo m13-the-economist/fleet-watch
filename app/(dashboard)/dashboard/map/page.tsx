@@ -1,5 +1,6 @@
-"use client"; 
-  
+"use client";
+
+import dynamic from 'next/dynamic';
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -19,7 +20,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import MapComponent from "@/components/MapComponent";
+
+// Dynamically import MapComponent with SSR disabled to prevent prerender errors
+const MapComponent = dynamic(() => import('@/components/MapComponent'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[500px] bg-[#1A1A1A] rounded-xl flex items-center justify-center">
+      <div className="text-white">Loading map...</div>
+    </div>
+  ),
+});
 
 interface Vehicle {
   id: string;
