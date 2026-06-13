@@ -10,7 +10,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-black">
       {/* Hero Section */}
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#D4AF37]/5 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-linear-to-br from-[#D4AF37] via-transparent to-transparent" style={{ opacity: 0.05 }} />
         <div className="container mx-auto px-4 py-20 text-center relative">
           <div className="inline-flex items-center gap-2 bg-[#D4AF37]/10 rounded-full px-4 py-1.5 mb-6 border border-[#D4AF37]/20">
             <Zap className="w-3 h-3 text-[#D4AF37]" />

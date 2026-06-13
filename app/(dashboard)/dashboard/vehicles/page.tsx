@@ -15,8 +15,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { createClient } from "@/lib/supabase/client";
-import { Car, Bike, Truck, Search, Plus, Eye, Thermometer, Battery, MapPin, Copy, Trash2 } from "lucide-react";
-import Link from "next/link";
+import { Car, Bike, Truck, Search, Plus, Thermometer, Battery, MapPin, Copy, Trash2, Eye } from "lucide-react";
 import { toast } from "sonner";
 
 interface Vehicle {
@@ -111,7 +110,6 @@ export default function VehiclesPage() {
         return;
       }
 
-      // Add the vehicle directly with profile_id
       const { error: vehicleError } = await supabase
         .from("vehicles")
         .insert({
@@ -150,19 +148,16 @@ export default function VehiclesPage() {
     setDeleting(true);
     
     try {
-      // Delete readings first
       await supabase
         .from("readings")
         .delete()
         .eq("vehicle_id", vehicleToDelete.id);
       
-      // Delete alerts
       await supabase
         .from("alerts")
         .delete()
         .eq("vehicle_id", vehicleToDelete.id);
       
-      // Delete the vehicle
       const { error: vehicleError } = await supabase
         .from("vehicles")
         .delete()
@@ -199,6 +194,9 @@ export default function VehiclesPage() {
     return name.includes(searchTerm) || plate.includes(searchTerm);
   });
 
+  const hasVehicles = vehicles.length > 0;
+  const hasSearchResults = filteredVehicles.length > 0;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -230,105 +228,136 @@ export default function VehiclesPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredVehicles.map((vehicle) => (
-          <Card key={vehicle.id} className="bg-[#0A0A0A] border-[#1A1A1A] rounded-2xl overflow-hidden hover:border-[#D4AF37]/30 transition-all">
-            <div className="p-6">
-              <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#1A1A1A] flex items-center justify-center">
-                    {getVehicleIcon(vehicle.vehicle_type)}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-white">{vehicle.vehicle_name || "Unnamed"}</h3>
-                    <p className="text-xs text-[#6B7280]">{vehicle.plate_number || "No plate"}</p>
-                    {vehicle.device_id && (
-                      <div className="flex items-center gap-1 mt-1">
-                        <p className="text-[9px] text-[#D4AF37] font-mono">{vehicle.device_id}</p>
-                        <button onClick={() => copyDeviceId(vehicle.device_id!)} className="text-gray-500 hover:text-[#D4AF37]">
-                          <Copy className="w-3 h-3" />
-                        </button>
+      {/* Search has no results - Show message */}
+      {search && !hasSearchResults && (
+        <div className="text-center py-12">
+          <Search className="w-12 h-12 text-[#1A1A1A] mx-auto mb-4" />
+          <p className="text-[#6B7280]">No vehicles match your search</p>
+          <p className="text-sm text-[#4B5563] mt-1">Try a different search term</p>
+          <Button onClick={() => setSearch("")} variant="outline" className="mt-4">
+            Clear Search
+          </Button>
+        </div>
+      )}
+
+      {/* No vehicles at all - Show add first vehicle message */}
+      {!hasVehicles && !search && (
+        <div className="text-center py-12">
+          <Car className="w-12 h-12 text-[#1A1A1A] mx-auto mb-4" />
+          <p className="text-[#6B7280]">No vehicles yet</p>
+          <Button onClick={() => setAddModalOpen(true)} variant="outline" className="mt-4">
+            Add your first vehicle
+          </Button>
+        </div>
+      )}
+
+      {/* Show vehicles grid */}
+      {hasSearchResults && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredVehicles.map((vehicle) => (
+            <Card 
+              key={vehicle.id} 
+              className="bg-[#0A0A0A] border-[#1A1A1A] rounded-2xl overflow-hidden hover:border-[#D4AF37]/30 transition-all cursor-pointer"
+              onClick={() => router.push(`/dashboard/vehicles/${vehicle.id}`)}
+            >
+              <div className="p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#1A1A1A] flex items-center justify-center">
+                      {getVehicleIcon(vehicle.vehicle_type)}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-white">{vehicle.vehicle_name || "Unnamed"}</h3>
+                      <p className="text-xs text-[#6B7280]">{vehicle.plate_number || "No plate"}</p>
+                      {vehicle.device_id && (
+                        <div className="flex items-center gap-1 mt-1">
+                          <p className="text-[9px] text-[#D4AF37] font-mono">{vehicle.device_id}</p>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyDeviceId(vehicle.device_id!);
+                            }} 
+                            className="text-gray-500 hover:text-[#D4AF37]"
+                          >
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex items-center mt-1">
+                        <span className={`inline-block w-2 h-2 rounded-full ${vehicle.status === "online" ? "bg-[#22C55E]" : "bg-[#EF4444]"} mr-2 animate-pulse`}></span>
+                        <span className="text-xs text-[#6B7280] capitalize">{vehicle.status || "offline"}</span>
                       </div>
-                    )}
-                    <div className="flex items-center mt-1">
-                      <span className={`inline-block w-2 h-2 rounded-full ${vehicle.status === "online" ? "bg-[#22C55E]" : "bg-[#EF4444]"} mr-2 animate-pulse`}></span>
-                      <span className="text-xs text-[#6B7280] capitalize">{vehicle.status || "offline"}</span>
                     </div>
                   </div>
-                </div>
-                <div className="flex gap-1">
-                  <Link href={`/dashboard/vehicles/${vehicle.id}`}>
-                    <Button variant="ghost" size="icon" className="text-[#6B7280] hover:text-white">
-                      <Eye className="w-4 h-4" />
-                    </Button>
-                  </Link>
                   <Button 
                     variant="ghost" 
                     size="icon" 
                     className="text-red-500 hover:text-red-400 hover:bg-red-500/10"
-                    onClick={() => openDeleteModal(vehicle)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openDeleteModal(vehicle);
+                    }}
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
-              </div>
 
-              <div className="space-y-3 mb-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#6B7280]">Temperature</span>
-                  <span className={`font-semibold ${
-                    (vehicle.last_temperature || 0) > 95 ? "text-[#EF4444]" :
-                    (vehicle.last_temperature || 0) > 85 ? "text-[#FACC15]" : "text-[#22C55E]"
-                  }`}>
-                    {vehicle.last_temperature ? `${vehicle.last_temperature}°C` : "--"}
-                  </span>
+                <div className="space-y-3 mb-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-[#6B7280]">Temperature</span>
+                    <span className={`font-semibold ${
+                      (vehicle.last_temperature || 0) > 95 ? "text-[#EF4444]" :
+                      (vehicle.last_temperature || 0) > 85 ? "text-[#FACC15]" : "text-[#22C55E]"
+                    }`}>
+                      {vehicle.last_temperature ? `${vehicle.last_temperature}°C` : "--"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-[#6B7280]">Voltage</span>
+                    <span className={`font-semibold ${
+                      (vehicle.last_voltage || 0) < 11.8 ? "text-[#EF4444]" :
+                      (vehicle.last_voltage || 0) < 12.2 ? "text-[#FACC15]" : "text-[#22C55E]"
+                    }`}>
+                      {vehicle.last_voltage ? `${vehicle.last_voltage}V` : "--"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-[#6B7280]">Last Seen</span>
+                    <span className="text-sm text-white">
+                      {vehicle.last_seen ? new Date(vehicle.last_seen).toLocaleString() : "--"}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#6B7280]">Voltage</span>
-                  <span className={`font-semibold ${
-                    (vehicle.last_voltage || 0) < 11.8 ? "text-[#EF4444]" :
-                    (vehicle.last_voltage || 0) < 12.2 ? "text-[#FACC15]" : "text-[#22C55E]"
-                  }`}>
-                    {vehicle.last_voltage ? `${vehicle.last_voltage}V` : "--"}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#6B7280]">Last Seen</span>
-                  <span className="text-sm text-white">
-                    {vehicle.last_seen ? new Date(vehicle.last_seen).toLocaleString() : "--"}
-                  </span>
-                </div>
-              </div>
 
-              <div className="flex gap-2 pt-4 border-t border-[#1A1A1A]">
-                <Link href={`/dashboard/vehicles/${vehicle.id}`} className="flex-1">
-                  <Button variant="outline" size="sm" className="w-full border-[#1A1A1A] text-[#6B7280] hover:text-white">
-                    <Thermometer className="w-3 h-3 mr-2" />
-                    History
+                <div className="flex gap-2 pt-4 border-t border-[#1A1A1A]">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex-1 border-[#1A1A1A] text-[#6B7280] hover:text-white"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/dashboard/vehicles/${vehicle.id}`);
+                    }}
+                  >
+                    <Eye className="w-3 h-3 mr-2" />
+                    Details
                   </Button>
-                </Link>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1 border-[#1A1A1A] text-[#6B7280] hover:text-white"
-                  onClick={() => router.push(`/dashboard/map?vehicle=${vehicle.id}`)}
-                >
-                  <MapPin className="w-3 h-3 mr-2" />
-                  Locate
-                </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="flex-1 border-[#1A1A1A] text-[#6B7280] hover:text-white"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/dashboard/map?vehicle=${vehicle.id}`);
+                    }}
+                  >
+                    <MapPin className="w-3 h-3 mr-2" />
+                    Locate
+                  </Button>
+                </div>
               </div>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      {filteredVehicles.length === 0 && (
-        <div className="text-center py-12">
-          <Car className="w-12 h-12 text-[#1A1A1A] mx-auto mb-4" />
-          <p className="text-[#6B7280]">No vehicles found</p>
-          <Button onClick={() => setAddModalOpen(true)} variant="outline" className="mt-4">
-            Add your first vehicle
-          </Button>
+            </Card>
+          ))}
         </div>
       )}
 

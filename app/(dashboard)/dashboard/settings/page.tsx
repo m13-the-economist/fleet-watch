@@ -26,6 +26,7 @@ import {
   X,
   Trash2,
   Pencil,
+  LogOut,
 } from "lucide-react";
 
 interface UserProfile {
@@ -52,6 +53,7 @@ export default function SettingsPage() {
   const [nameModalOpen, setNameModalOpen] = useState(false);
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [signOutModalOpen, setSignOutModalOpen] = useState(false);
   
   // Form states
   const [editName, setEditName] = useState("");
@@ -71,7 +73,6 @@ export default function SettingsPage() {
   async function fetchUserData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // Query profiles table instead of users
       const { data: userData } = await supabase
         .from("profiles")
         .select("*")
@@ -87,13 +88,12 @@ export default function SettingsPage() {
         setEditName(userData.full_name || "");
         setEditCompany(userData.company_name || "");
       } else {
-        // If no profile exists yet, create one
         const { error: insertError } = await supabase
           .from("profiles")
           .insert({ id: user.id, full_name: "", company_name: null });
         
         if (!insertError) {
-          fetchUserData(); // Retry
+          fetchUserData();
         }
       }
     }
@@ -181,6 +181,11 @@ export default function SettingsPage() {
     setSendingEmail(false);
   }
 
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    router.push("/signin");
+  }
+
   async function addTelegramSubscription() {
     if (!telegramChatId) return;
     const { data: { user } } = await supabase.auth.getUser();
@@ -214,9 +219,7 @@ export default function SettingsPage() {
     if (!confirmed) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
-      // Delete from profiles first
       await supabase.from("profiles").delete().eq("id", user.id);
-      // Delete auth user
       await supabase.auth.admin.deleteUser(user.id);
       toast.success("Account deleted");
       router.push("/signup");
@@ -235,6 +238,33 @@ export default function SettingsPage() {
   if (isMobile) {
     return (
       <div className="max-w-3xl mx-auto">
+        {/* Sign Out Confirmation Modal */}
+        <Dialog open={signOutModalOpen} onOpenChange={setSignOutModalOpen}>
+          <DialogContent className="bg-[#0A0A0A] border-[#1A1A1A] text-white max-w-sm rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-white">Sign Out</DialogTitle>
+              <DialogDescription className="text-gray-400">
+                Are you sure you want to sign out? You will need to sign in again to access your fleet data.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setSignOutModalOpen(false)}
+                className="border-[#2A2A2A] text-gray-400 flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSignOut}
+                className="bg-[#EF4444] hover:bg-[#DC2626] text-white flex-1"
+              >
+                Sign Out
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <div className="mb-5">
           <h1 className="text-xl font-bold text-white">Settings</h1>
           <p className="text-xs text-[#6B7280]">Manage your account</p>
@@ -247,7 +277,6 @@ export default function SettingsPage() {
             <h2 className="text-sm font-semibold text-white">Profile</h2>
           </div>
           
-          {/* Name Field */}
           <div className="mb-3">
             <div className="flex justify-between items-center mb-1">
               <Label className="text-xs text-gray-400">Full Name</Label>
@@ -258,13 +287,11 @@ export default function SettingsPage() {
             <p className="text-sm text-white">{profile?.full_name || "Not set"}</p>
           </div>
 
-          {/* Email Field */}
           <div className="mb-3">
             <Label className="text-xs text-gray-400 mb-1 block">Email</Label>
             <p className="text-sm text-gray-400">{profile?.email}</p>
           </div>
 
-          {/* Company Field */}
           <div>
             <div className="flex justify-between items-center mb-1">
               <Label className="text-xs text-gray-400">Company (optional)</Label>
@@ -330,6 +357,24 @@ export default function SettingsPage() {
           </div>
         </Card>
 
+        {/* Sign Out Section - Mobile */}
+        <Card className="bg-[#0A0A0A] border-[#1A1A1A] rounded-xl p-4 mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <LogOut className="w-4 h-4 text-red-400" />
+            <h2 className="text-sm font-semibold text-red-400">Sign Out</h2>
+          </div>
+          <p className="text-[10px] text-gray-400 mb-3">Sign out of your account.</p>
+          <Button 
+            onClick={() => setSignOutModalOpen(true)} 
+            variant="outline" 
+            size="sm" 
+            className="w-full border-red-500/30 text-red-400 hover:bg-red-500/10 h-9 text-sm"
+          >
+            <LogOut className="w-3.5 h-3.5 mr-1" />
+            Sign Out
+          </Button>
+        </Card>
+
         {/* Danger Section */}
         <Card className="bg-[#0A0A0A] border-red-500/30 rounded-xl p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -343,90 +388,48 @@ export default function SettingsPage() {
           </Button>
         </Card>
 
-        {/* Name Modal */}
+        {/* Modals (same as before) */}
         <Dialog open={nameModalOpen} onOpenChange={setNameModalOpen}>
           <DialogContent className="bg-[#0A0A0A] border-[#1A1A1A] text-white">
             <DialogHeader>
               <DialogTitle>Edit Name</DialogTitle>
-              <DialogDescription className="text-gray-400">
-                Change your display name
-              </DialogDescription>
+              <DialogDescription className="text-gray-400">Change your display name</DialogDescription>
             </DialogHeader>
-            <Input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              className="bg-[#1A1A1A] border-[#2A2A2A] text-white"
-              placeholder="Your full name"
-            />
+            <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="bg-[#1A1A1A] border-[#2A2A2A] text-white" />
             <DialogFooter>
-              <Button variant="outline" onClick={() => setNameModalOpen(false)} className="border-[#2A2A2A] text-gray-400">
-                Cancel
-              </Button>
-              <Button onClick={saveName} disabled={saving} className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black">
-                {saving ? "Saving..." : "Save"}
-              </Button>
+              <Button variant="outline" onClick={() => setNameModalOpen(false)} className="border-[#2A2A2A] text-gray-400">Cancel</Button>
+              <Button onClick={saveName} disabled={saving} className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black">Save</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Company Modal */}
         <Dialog open={companyModalOpen} onOpenChange={setCompanyModalOpen}>
           <DialogContent className="bg-[#0A0A0A] border-[#1A1A1A] text-white">
             <DialogHeader>
               <DialogTitle>Edit Company</DialogTitle>
-              <DialogDescription className="text-gray-400">
-                Change your company name (optional)
-              </DialogDescription>
+              <DialogDescription className="text-gray-400">Change your company name (optional)</DialogDescription>
             </DialogHeader>
-            <Input
-              value={editCompany}
-              onChange={(e) => setEditCompany(e.target.value)}
-              className="bg-[#1A1A1A] border-[#2A2A2A] text-white"
-              placeholder="Your company name"
-            />
+            <Input value={editCompany} onChange={(e) => setEditCompany(e.target.value)} className="bg-[#1A1A1A] border-[#2A2A2A] text-white" />
             <DialogFooter>
-              <Button variant="outline" onClick={() => setCompanyModalOpen(false)} className="border-[#2A2A2A] text-gray-400">
-                Cancel
-              </Button>
-              <Button onClick={saveCompany} disabled={saving} className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black">
-                {saving ? "Saving..." : "Save"}
-              </Button>
+              <Button variant="outline" onClick={() => setCompanyModalOpen(false)} className="border-[#2A2A2A] text-gray-400">Cancel</Button>
+              <Button onClick={saveCompany} disabled={saving} className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black">Save</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Password Modal */}
         <Dialog open={passwordModalOpen} onOpenChange={setPasswordModalOpen}>
           <DialogContent className="bg-[#0A0A0A] border-[#1A1A1A] text-white">
             <DialogHeader>
               <DialogTitle>Change Password</DialogTitle>
-              <DialogDescription className="text-gray-400">
-                We'll send a confirmation email to verify your identity
-              </DialogDescription>
+              <DialogDescription className="text-gray-400">We'll send a confirmation email to verify your identity</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
-              <Input
-                type="password"
-                placeholder="New password"
-                value={editPassword}
-                onChange={(e) => setEditPassword(e.target.value)}
-                className="bg-[#1A1A1A] border-[#2A2A2A] text-white"
-              />
-              <Input
-                type="password"
-                placeholder="Confirm new password"
-                value={editConfirmPassword}
-                onChange={(e) => setEditConfirmPassword(e.target.value)}
-                className="bg-[#1A1A1A] border-[#2A2A2A] text-white"
-              />
+              <Input type="password" placeholder="New password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} className="bg-[#1A1A1A] border-[#2A2A2A] text-white" />
+              <Input type="password" placeholder="Confirm new password" value={editConfirmPassword} onChange={(e) => setEditConfirmPassword(e.target.value)} className="bg-[#1A1A1A] border-[#2A2A2A] text-white" />
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setPasswordModalOpen(false)} className="border-[#2A2A2A] text-gray-400">
-                Cancel
-              </Button>
-              <Button onClick={sendPasswordResetEmail} disabled={sendingEmail} className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black">
-                {sendingEmail ? "Sending..." : "Send Reset Email"}
-              </Button>
+              <Button variant="outline" onClick={() => setPasswordModalOpen(false)} className="border-[#2A2A2A] text-gray-400">Cancel</Button>
+              <Button onClick={sendPasswordResetEmail} disabled={sendingEmail} className="bg-[#D4AF37] hover:bg-[#E5C86B] text-black">Send Reset Email</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

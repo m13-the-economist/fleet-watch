@@ -11,16 +11,23 @@ import {
   Settings,
   MapPin,
   Menu,
-  X,
+  X, 
   LogOut,
-  Bell,
-  Shield,
+  Shield, 
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import MobileBottomNav from "@/components/MobileBottomNav";
 import { createClient } from "@/lib/supabase/client";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export default function DashboardLayout({
   children,
@@ -30,6 +37,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [signOutModalOpen, setSignOutModalOpen] = useState(false);
   const isMobile = !useMediaQuery("(min-width: 768px)");
   const supabase = createClient();
 
@@ -51,46 +59,93 @@ export default function DashboardLayout({
   if (isMobile) {
     return (
       <div className="min-h-screen bg-black">
+        {/* Sign Out Confirmation Modal */}
+        <Dialog open={signOutModalOpen} onOpenChange={setSignOutModalOpen}>
+          <DialogContent className="bg-[#0A0A0A] border-[#1A1A1A] text-white max-w-sm rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="text-white">Sign Out</DialogTitle>
+              <DialogDescription className="text-gray-400">
+                Are you sure you want to sign out? You will need to sign in again to access your fleet data.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setSignOutModalOpen(false)}
+                className="border-[#2A2A2A] text-gray-400 flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleLogout}
+                className="bg-[#EF4444] hover:bg-[#DC2626] text-white flex-1"
+              >
+                Sign Out
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Top Bar */}
         <header className="fixed top-0 left-0 right-0 bg-black/80 backdrop-blur-xl border-b border-white/10 z-50">
           <div className="flex justify-between items-center px-4 py-3">
             <div>
               <h1 className="text-lg font-bold text-white">
                 Fleet<span className="text-[#D4AF37]">Watch</span>
-              </h1>
-              <p className="text-[10px] text-white/40">AI Fleet Intelligence</p>
+              </h1> 
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="relative text-white/60 hover:text-white hover:bg-white/10 rounded-full">
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#EF4444] rounded-full"></span>
-              </Button>
-              <button
+              <button 
                 onClick={() => router.push("/dashboard/settings")}
                 className="focus:outline-none"
               >
                 <Avatar className="w-8 h-8 bg-[#D4AF37]/20 border border-[#D4AF37]/30 hover:bg-[#D4AF37]/30 transition-all cursor-pointer">
-                  <AvatarFallback className="text-[#D4AF37] text-xs font-bold">JD</AvatarFallback>
+                  <AvatarFallback className="text-[#D4AF37] text-xs font-bold">II</AvatarFallback>
                 </Avatar>
               </button>
             </div>
           </div>
         </header>
 
-        {/* Main Content */}
-        <main className="pt-16 px-4 pb-20">
+        <main className="pt-16 px-4 pb-24">
           {children}
         </main>
 
-        {/* Floating Bottom Navigation */}
-        <MobileBottomNav />
+        <MobileBottomNav /> 
       </div>
     );
   }
-
+ 
   // Desktop Layout
   return (
     <div className="min-h-screen bg-black">
+      {/* Sign Out Confirmation Modal */}
+      <Dialog open={signOutModalOpen} onOpenChange={setSignOutModalOpen}>
+        <DialogContent className="bg-[#0A0A0A] border-[#1A1A1A] text-white max-w-sm rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-white">Sign Out</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Are you sure you want to sign out? You will need to sign in again to access your fleet data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setSignOutModalOpen(false)}
+              className="border-[#2A2A2A] text-gray-400 flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleLogout}
+              className="bg-[#EF4444] hover:bg-[#DC2626] text-white flex-1"
+            >
+              Sign Out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="md:hidden fixed top-5 left-5 z-50">
         <Button
           variant="outline"
@@ -102,8 +157,9 @@ export default function DashboardLayout({
         </Button>
       </div>
 
+      {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-40 h-screen w-[260px] bg-black border-r border-white/10 transform transition-transform duration-200 ease-in-out ${
+        className={`fixed top-0 left-0 z-40 h-screen w-64 bg-black border-r border-white/10 transform transition-transform duration-200 ease-in-out ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
@@ -113,8 +169,7 @@ export default function DashboardLayout({
               <div>
                 <h1 className="text-2xl font-bold text-white tracking-tight">
                   Fleet<span className="text-[#D4AF37]">Watch</span>
-                </h1>
-                <p className="text-xs text-[#6B7280] mt-1">AI Fleet Intelligence</p>
+                </h1> 
               </div>
               <button
                 className="md:hidden text-white/60 hover:text-white"
@@ -150,15 +205,15 @@ export default function DashboardLayout({
           <div className="p-4 border-t border-white/10">
             <div className="flex items-center gap-3 mb-4 p-3 rounded-xl bg-white/5">
               <Avatar className="w-10 h-10 bg-[#D4AF37]/20 border border-[#D4AF37]/30">
-                <AvatarFallback className="text-[#D4AF37] font-bold">JD</AvatarFallback>
+                <AvatarFallback className="text-[#D4AF37] font-bold">II</AvatarFallback>
               </Avatar>
               <div className="flex-1">
-                <p className="text-sm font-semibold text-white">John Doe</p>
-                <p className="text-xs text-[#6B7280]">Fleet Manager</p>
+                <p className="text-sm font-semibold text-white">Fleet Manager</p>
+                <p className="text-xs text-[#6B7280]">Enterprise</p>
               </div>
             </div>
             <Button
-              onClick={handleLogout}
+              onClick={() => setSignOutModalOpen(true)}
               variant="ghost"
               className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-500/10 h-11 rounded-xl"
             >
@@ -169,17 +224,11 @@ export default function DashboardLayout({
         </div>
       </aside>
 
-      <div className="md:ml-[260px] min-h-screen">
+      <div className="md:ml-64 min-h-screen">
+        {/* Desktop Header */}
         <header className="sticky top-0 z-30 bg-black/95 backdrop-blur-sm border-b border-white/10">
-          <div className="flex justify-between items-center px-6 py-4">
-            <h2 className="text-xl font-semibold text-white tracking-tight hidden md:block">
-              Dashboard
-            </h2>
-            <div className="flex items-center gap-3 ml-auto">
-              <Button variant="ghost" size="icon" className="relative text-[#6B7280] hover:text-white hover:bg-white/10 rounded-xl">
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-[#EF4444] rounded-full"></span>
-              </Button>
+          <div className="flex justify-end items-center px-6 py-4">
+            <div className="flex items-center gap-3">
               <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5">
                 <Shield className="w-4 h-4 text-[#D4AF37]" />
                 <span className="text-xs text-[#6B7280]">Enterprise</span>
@@ -188,7 +237,7 @@ export default function DashboardLayout({
           </div>
         </header>
 
-        <main className="p-6">{children}</main>
+        <main className="pt-8 px-6 pb-6">{children}</main>
       </div>
     </div>
   );
