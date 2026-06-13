@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from 'next/dynamic';
+import { Suspense } from 'react';
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -1001,6 +1002,11 @@ function MapContent() {
   );
 }
 
+// Wrap the entire component in Suspense to fix the useSearchParams() error
 export default function MapPage() {
-  return <MapContent />;
+  return (
+    <Suspense fallback={<div className="h-[500px] bg-[#1A1A1A] rounded-xl flex items-center justify-center"><div className="text-white">Loading map...</div></div>}>
+      <MapContent />
+    </Suspense>
+  );
 }
